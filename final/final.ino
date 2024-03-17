@@ -1,7 +1,12 @@
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
+Adafruit_MPU6050 mpu;
+
 #define DEBUG true
+//#define SERVOS
 
 enum message_type {
   SERVO_CONTROL = 0,
@@ -23,6 +28,9 @@ int baudrate = 115200;
 int servos_milis_prev = 0;
 int servos_update_tick_mili = 50;
 
+const float corr_acc_x = 2.0226804123711344;
+const float corr_acc_y = 1.9979633401221997;
+const float corr_acc_z = 1.5069124423963134;
 
 
 int large_difference = 30;
@@ -43,10 +51,77 @@ void reset_joints()
 {
   for (int i = 0; i < 12; ++i)
   {
+    #ifdef SERVOS
     pwm.setPWM(i, 0, MID);  
+    #endif 
     current_state_of_joint[i] = MID;
     desired_state_of_joint[i] = MID;
   }
+}
+
+void setupMPU6050()
+{
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+    Serial.println("+-2G");
+    break;
+  case MPU6050_RANGE_4_G:
+    Serial.println("+-4G");
+    break;
+  case MPU6050_RANGE_8_G:
+    Serial.println("+-8G");
+    break;
+  case MPU6050_RANGE_16_G:
+    Serial.println("+-16G");
+    break;
+  }
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+    Serial.println("+- 250 deg/s");
+    break;
+  case MPU6050_RANGE_500_DEG:
+    Serial.println("+- 500 deg/s");
+    break;
+  case MPU6050_RANGE_1000_DEG:
+    Serial.println("+- 1000 deg/s");
+    break;
+  case MPU6050_RANGE_2000_DEG:
+    Serial.println("+- 2000 deg/s");
+    break;
+  }
+
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+    Serial.println("260 Hz");
+    break;
+  case MPU6050_BAND_184_HZ:
+    Serial.println("184 Hz");
+    break;
+  case MPU6050_BAND_94_HZ:
+    Serial.println("94 Hz");
+    break;
+  case MPU6050_BAND_44_HZ:
+    Serial.println("44 Hz");
+    break;
+  case MPU6050_BAND_21_HZ:
+    Serial.println("21 Hz");
+    break;
+  case MPU6050_BAND_10_HZ:
+    Serial.println("10 Hz");
+    break;
+  case MPU6050_BAND_5_HZ:
+    Serial.println("5 Hz");
+    break;
+  }
+
+  Serial.println("");
+  delay(100);
 }
 
 float smooth_degree(float degree, float prev_degree) {
@@ -76,7 +151,9 @@ void update_smoothly_joints()
      
      int toset = smooth_degree(desired_state_of_joint[i], current_state_of_joint[i]);
      current_state_of_joint[i] = toset;
+    #ifdef SERVOS
      pwm.setPWM(i, 0, toset);
+    #endif SERVOS
      #ifdef DEBUG
       Serial.print("servo ");
       Serial.print(i);
@@ -89,7 +166,6 @@ void update_smoothly_joints()
     servos_milis_prev = current_time;
   }
 }
-
 
 
 void decode_first_byte(byte b)
@@ -106,10 +182,39 @@ void decode_first_byte(byte b)
   else if (b == 1)
   {
     current_msg = READ_IMU;
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+
+        
     #ifdef DEBUG
       Serial.println("IMU");
-    #endif
+      Serial.print(a.acceleration.x * corr_acc_x);
+      Serial.print(",");
+      Serial.print(a.acceleration.y * corr_acc_y);
+      Serial.print(",");
+      Serial.print(a.acceleration.z * corr_acc_z);
+      Serial.print(",");        
+      Serial.print(g.gyro.x);
+      Serial.print(",");
+      Serial.print(g.gyro.y);
+      Serial.print(",");
+      Serial.print(g.gyro.z);
+      Serial.println("");
+   #endif
+      Serial2.print(a.acceleration.x * corr_acc_x);
+      Serial2.print(",");
+      Serial2.print(a.acceleration.y * corr_acc_y);
+      Serial2.print(",");
+      Serial2.print(a.acceleration.z * corr_acc_z);
+      Serial2.print(",");        
+      Serial2.print(g.gyro.x);
+      Serial2.print(",");
+      Serial2.print(g.gyro.y);
+      Serial2.print(",");
+      Serial2.print(g.gyro.z);
+      Serial2.println("");
 
+    msgEnd = true;
   }
   else if (b == 2)
   {
@@ -175,12 +280,24 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(baudrate);
   Serial2.begin(baudrate);
-  pwm.begin();
+  #ifdef SERVOS
+   pwm.begin();
   pwm.setPWMFreq(50); //set frequency 50
-  servos_milis_prev = 0;
+  #endif
+  servos_milis_prev = 0;  
+  //reset_joints();
 
-  reset_joints();
-  
+  while (!Serial)
+    delay(10); // will pause Zero, Leonardo, etc until serial console opens
+
+  // Try to initialize!
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+  setupMPU6050();
 }
 
 void loop() {
@@ -209,5 +326,6 @@ void loop() {
       msgStart = true; 
     }
   }
-  update_smoothly_joints();
+  //update_smoothly_joints();
+  // Take a measurement with receiver bias correction and print to serial terminal
 }
