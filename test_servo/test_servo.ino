@@ -95,12 +95,18 @@ void setup() {
 //5 degree for horizontal joint. 20 degree for big leg. 15 degree 2nd small leg.
 //0 is hj, 1 is bl, 2 is sl.
 
+int serial_set_angle = 90;
+
 //decrease step interval for smoother movement of the servo
 void loop() {
   //write_degree(90.0);
   //delay(300);
   //sequencer(5, prev_RLHJ, curr_RLHJ);
-  sequencer(20, prev_RLBL, curr_RLBL);
+  if Serial.available(){
+    serial_set_angle = Serial.read();
+    sequencer(20, prev_RLBL, serial_set_angle);
+  }
+  
   //sequencer(10, prev_RLSL, curr_RLSL);
   /*for (int i = -1; i < 2; i++){
     write_degree(90.0 + i*30);

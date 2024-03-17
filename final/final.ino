@@ -2,6 +2,8 @@
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
+#include <Servo.h>
+
 
 Adafruit_MPU6050 mpu;
 
@@ -14,6 +16,9 @@ enum message_type {
   READ_LIDAR = 2
 };
 
+const int numServos = 12; // Define the number of servos
+Servo servos[numServos]; // Array of servo objects
+s
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
 
@@ -46,6 +51,130 @@ float desired_state_of_joint[12];
 
 
 message_type current_msg;
+
+
+const int E1 = 3; ///<Motor1 Speed
+const int E2 = 11;///<Motor2 Speed
+const int E3 = 5; ///<Motor3 Speed
+const int E4 = 6; ///<Motor4 Speed
+
+const int M1 = 4; ///<Motor1 Direction
+const int M2 = 12;///<Motor2 Direction
+const int M3 = 8; ///<Motor3 Direction
+const int M4 = 7; ///<Motor4 Direction
+
+
+void M1_advance(uint8_t Speed) ///<Motor1 Advance
+{
+ digitalWrite(M1,LOW);
+ analogWrite(E1,Speed);
+}
+void M2_advance(uint8_t Speed) ///<Motor2 Advance
+{
+ digitalWrite(M2,HIGH);
+ analogWrite(E2,Speed);
+}
+void M3_advance(uint8_t Speed) ///<Motor3 Advance
+{
+ digitalWrite(M3,LOW);
+ analogWrite(E3,Speed);
+}
+void M4_advance(uint8_t Speed) ///<Motor4 Advance
+{
+ digitalWrite(M4,HIGH);
+ analogWrite(E4,Speed);
+}
+
+void M1_back(uint8_t Speed) ///<Motor1 Back off
+{
+ digitalWrite(M1,HIGH);
+ analogWrite(E1,Speed);
+}
+void M2_back(uint8_t Speed) ///<Motor2 Back off
+{
+ digitalWrite(M2,LOW);
+ analogWrite(E2,Speed);
+}
+void M3_back(uint8_t Speed) ///<Motor3 Back off
+{
+ digitalWrite(M3,HIGH);
+ analogWrite(E3,Speed);
+}
+void M4_back(uint8_t Speed) ///<Motor4 Back off
+{
+ digitalWrite(M4,LOW);
+ analogWrite(E4,Speed);
+}
+
+
+void right_motor_forward(uint8_t Speed){
+    M1_advance(Speed);
+    M4_advance(Speed); 
+}
+
+
+void left_motor_forward(uint8_t Speed){
+    M2_advance(Speed);
+    M3_advance(Speed); 
+}
+
+
+void all_motor_backward(uint8_t Speed){
+    M1_back(Speed);
+    M4_back(Speed); 
+}
+
+void all_motor_backward(uint8_t Speed){
+    M1_back(Speed);
+    M4_back(Speed); 
+}
+
+
+void new_setPWM(int i, int on, int off) {
+  if (i >= 0 && i < numServos) {
+    int pin = i + 9; // Assuming servos start from pin 9
+    int pwmPeriod = 4095; // Max value for the tick
+
+    // Calculate the duty cycle for on and off ticks
+    int onTime = map(on, 0, pwmPeriod, 0, 255);
+    int offTime = map(off, 0, pwmPeriod, 0, 255);
+
+    // Set PWM using analogWrite
+    analogWrite(pin, onTime);
+    delayMicroseconds(50); // Small delay to ensure the PWM is set properly
+    analogWrite(pin, offTime);
+  }
+}
+
+void setPWMfrequency(int pin, int frequency) {
+  // Calculate the appropriate values for Timer1 registers
+  uint8_t prescalerBits = 0;
+  uint16_t pwmPeriod;
+
+  // Choose the appropriate prescaler to achieve the desired frequency
+  if (frequency >= 31250) {
+    prescalerBits = 0b001; // No prescaling
+    pwmPeriod = 65535; // 16MHz / 1 (no prescaling) / desired frequency - 1
+  } else if (frequency >= 3906) {
+    prescalerBits = 0b010; // Prescaler of 8
+    pwmPeriod = 65535; // 16MHz / 8 / desired frequency - 1
+  } else if (frequency >= 488) {
+    prescalerBits = 0b011; // Prescaler of 64
+    pwmPeriod = 65535; // 16MHz / 64 / desired frequency - 1
+  } else if (frequency >= 61) {
+    prescalerBits = 0b100; // Prescaler of 256
+    pwmPeriod = 65535; // 16MHz / 256 / desired frequency - 1
+  } else if (frequency >= 15) {
+    prescalerBits = 0b101; // Prescaler of 1024
+    pwmPeriod = 65535; // 16MHz / 1024 / desired frequency - 1
+  } else {
+    // Frequency too low
+    return;
+  }
+
+
+
+
 
 void reset_joints()
 {
@@ -166,6 +295,7 @@ void update_smoothly_joints()
     servos_milis_prev = current_time;
   }
 }
+ma
 
 
 void decode_first_byte(byte b)
@@ -298,6 +428,10 @@ void setup() {
     }
   }
   setupMPU6050();
+
+  for (int i = 0; i < numServos; i++) {
+    servos[i].attach(i + 9); // Attach servos to pins 9, 10, 11 (adjust pins as needed)
+  }
 }
 
 void loop() {
