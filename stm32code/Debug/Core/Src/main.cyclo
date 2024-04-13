@@ -1,0 +1,14 @@
+../Core/Src/main.c:101:6:blue_button_clicked	1
+../Core/Src/main.c:106:6:HAL_GPIO_EXTI_Callback	2
+../Core/Src/main.c:114:6:HAL_UART_RxCpltCallback	1
+../Core/Src/main.c:133:5:main	1
+../Core/Src/main.c:230:6:SystemClock_Config	3
+../Core/Src/main.c:278:13:MX_I2C1_Init	2
+../Core/Src/main.c:312:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:343:13:MX_DMA_Init	1
+../Core/Src/main.c:361:13:MX_GPIO_Init	1
+../Core/Src/main.c:408:6:StartDefaultTask	1
+../Core/Src/main.c:430:6:StartTask02	1
+../Core/Src/main.c:448:6:StartTask03	1
+../Core/Src/main.c:467:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:484:6:Error_Handler	1
