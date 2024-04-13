@@ -20,12 +20,9 @@
 #include "main.h"
 #include "cmsis_os.h"
 
-//#define HEARTBEAT_LED
-
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,24 +53,12 @@ const osThreadAttr_t heartbeat_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for TX_transmit */
-osThreadId_t TX_transmitHandle;
-const osThreadAttr_t TX_transmit_attributes = {
-  .name = "TX_transmit",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
 /* Definitions for RX_USART */
 osThreadId_t RX_USARTHandle;
 const osThreadAttr_t RX_USART_attributes = {
   .name = "RX_USART",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
-};
-/* Definitions for TX_queue */
-osMessageQueueId_t TX_queueHandle;
-const osMessageQueueAttr_t TX_queue_attributes = {
-  .name = "TX_queue"
 };
 /* Definitions for RX_queue */
 osMessageQueueId_t RX_queueHandle;
@@ -90,12 +75,12 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
-void StartDefaultTask(void *argument);
-void StartTask02(void *argument);
-void StartTask03(void *argument);
+void heartbeatTask(void *argument);
+void RX_decode_msg(void *argument);
 
 /* USER CODE BEGIN PFP */
 uint8_t USART_RX_BUFFER[1] = {0x00};
+uint8_t CURR_BYTE = 0x00;
 
 uint8_t data[] = "BTN\n";
 void blue_button_clicked()
@@ -111,9 +96,34 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 }
 
+void TransmitByte(uint8_t byte)
+{
+	HAL_UART_Transmit(&huart2, &byte, 1, 2000);
+}
+
+void TransmitMessage(uint8_t* msg, uint8_t size)
+{
+	HAL_UART_Transmit(&huart2, msg, size, 2000);
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin,1);
+	// HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin,1);
+	BaseType_t xHigherPriorityTaskWoken;
+
+	CURR_BYTE = USART_RX_BUFFER[0];
+	int txStatus = xQueueSendToBackFromISR(RX_queueHandle, &CURR_BYTE, &xHigherPriorityTaskWoken);
+
+	if (txStatus == 0)
+	{
+		// something went wrong
+	}
+	else
+	{
+		portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+	}
+
+	// start polling again
     HAL_UART_Receive_DMA (&huart2, USART_RX_BUFFER, 1);
 }
 
@@ -177,9 +187,6 @@ int main(void)
   /* USER CODE END RTOS_TIMERS */
 
   /* Create the queue(s) */
-  /* creation of TX_queue */
-  TX_queueHandle = osMessageQueueNew (128, sizeof(uint8_t), &TX_queue_attributes);
-
   /* creation of RX_queue */
   RX_queueHandle = osMessageQueueNew (64, sizeof(uint8_t), &RX_queue_attributes);
 
@@ -189,13 +196,10 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of heartbeat */
-  heartbeatHandle = osThreadNew(StartDefaultTask, NULL, &heartbeat_attributes);
-
-  /* creation of TX_transmit */
-  TX_transmitHandle = osThreadNew(StartTask02, NULL, &TX_transmit_attributes);
+  heartbeatHandle = osThreadNew(heartbeatTask, NULL, &heartbeat_attributes);
 
   /* creation of RX_USART */
-  RX_USARTHandle = osThreadNew(StartTask03, NULL, &RX_USART_attributes);
+  RX_USARTHandle = osThreadNew(RX_decode_msg, NULL, &RX_USART_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -396,14 +400,14 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_heartbeatTask */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the heartbeat thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_heartbeatTask */
+void heartbeatTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
@@ -418,40 +422,31 @@ void StartDefaultTask(void *argument)
   /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_StartTask02 */
-/**
-* @brief Function implementing the TX_transmit thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartTask02 */
-void StartTask02(void *argument)
-{
-  /* USER CODE BEGIN StartTask02 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartTask02 */
-}
-
-/* USER CODE BEGIN Header_StartTask03 */
+/* USER CODE BEGIN Header_RX_decode_msg */
 /**
 * @brief Function implementing the RX_USART thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask03 */
-void StartTask03(void *argument)
+/* USER CODE END Header_RX_decode_msg */
+void RX_decode_msg(void *argument)
 {
-  /* USER CODE BEGIN StartTask03 */
+  /* USER CODE BEGIN RX_decode_msg */
   /* Infinite loop */
+	uint8_t rxStatus;
+	uint8_t byte;
+
   for(;;)
   {
-    osDelay(1);
+	rxStatus = xQueueReceive(RX_queueHandle, &byte, 50);
+    if (rxStatus != 0)
+    {
+    	// decode byte
+    	TransmitByte(byte);
+    }
+	osDelay(1);
   }
-  /* USER CODE END StartTask03 */
+  /* USER CODE END RX_decode_msg */
 }
 
 /**
